@@ -1,0 +1,1109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Building Measure</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --ink: #1b1f24; --muted: #5d6570; --line: #e2e4e9;
+    --soft: #f7f8fa; --accent: #1f6feb; --accent-ink: #fff; --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e;
+    --front: #f59e0b; --back: #a855f7; --left: #06b6d4; --right: #ec4899;
+    --radius: 12px; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216; --panel: #171b21; --ink: #e7eaee; --muted: #9aa3ad; --line: #2a3039;
+      --soft: #1d222a; --accent: #4c8dff; --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+      --shadow: 0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .app { display: flex; height: 100vh; }
+  aside { width: 410px; flex: none; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .map-wrap { flex: 1; position: relative; min-width: 0; }
+  #map { position: absolute; inset: 0; background: #1b1f24; }
+
+  header { padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand svg { flex: none; }
+  .brand h1 { font-size: 17px; margin: 0; letter-spacing: -.01em; }
+  .brand p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  form.search { display: flex; gap: 8px; margin-top: 12px; }
+  input, select, button { font: inherit; color: inherit; }
+  input[type=text], input[type=number], input[type=password] {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--soft); outline: none; }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  button { cursor: pointer; border: 1px solid var(--line); background: var(--soft); border-radius: 9px; padding: 8px 12px; font-weight: 600; white-space: nowrap; }
+  button:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.active { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .results { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .results li { padding: 7px 10px; cursor: pointer; font-size: 13px; border-top: 1px solid var(--line); }
+  .results li:first-child { border-top: 0; }
+  .results li:hover, .results li.sel { background: var(--soft); }
+  .results li.sel { font-weight: 600; }
+
+  .tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 0; background: none; border-radius: 0; padding: 10px 10px 9px; color: var(--muted); border-bottom: 2px solid transparent; }
+  .tabs button[aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); }
+  .scroll { overflow-y: auto; flex: 1; min-height: 0; }
+  section.tab { padding: 14px 18px 28px; }
+  section.tab[hidden] { display: none; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 8px; }
+  h2:first-child { margin-top: 0; }
+  h3 { font-size: 15px; margin: 18px 0 6px; }
+
+  .status { display: flex; gap: 8px; align-items: flex-start; padding: 9px 11px; border-radius: 9px; background: var(--soft); border: 1px solid var(--line); font-size: 13px; margin-bottom: 12px; }
+  .status[data-kind=ok] { border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }
+  .status[data-kind=warn] { border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
+  .status[data-kind=error] { border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--muted); }
+  .status[data-kind=ok] .dot { background: var(--ok); }
+  .status[data-kind=warn] .dot { background: var(--warn); }
+  .status[data-kind=error] .dot { background: var(--bad); }
+  .status[data-kind=busy] .dot { background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+
+  .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tools button { display: flex; align-items: center; gap: 7px; justify-content: center; }
+  .row { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin-top: 10px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 5px 12px; background: var(--panel); }
+  .seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+  label.check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; cursor: pointer; }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .card { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: var(--soft); }
+  .card .k { font-size: 12px; color: var(--muted); }
+  .card .v { font-size: 20px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+  .card .s { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .empty { color: var(--muted); font-size: 13px; padding: 14px; border: 1px dashed var(--line); border-radius: var(--radius); text-align: center; }
+  .front-line { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .front-line b { color: var(--ink); }
+
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; }
+  tbody.walls tr { cursor: pointer; }
+  tbody.walls tr:hover, tbody.walls tr.hl { background: var(--soft); }
+  tbody.walls tr.is-front td:first-child { font-weight: 700; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; }
+  .chip i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+  .hint { font-size: 12.5px; color: var(--muted); margin: 8px 0 0; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 13px; }
+  a { color: var(--accent); }
+
+  .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+  .pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  .pill.over, .pill.under { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+
+  .prose p, .prose li { color: var(--ink); }
+  .prose p { margin: 0 0 10px; }
+  .prose ol, .prose ul { padding-left: 20px; margin: 0 0 10px; }
+  .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0 14px; }
+  .flow div { text-align: center; border: 1px solid var(--line); background: var(--soft); border-radius: 9px; padding: 8px 4px; font-size: 12px; }
+  .flow b { display: block; font-size: 13px; }
+  kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: var(--soft); }
+
+  .banner { position: absolute; z-index: 1000; top: 12px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 120px);
+    background: rgba(17,20,24,.88); color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 13px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; }
+  .banner[hidden] { display: none; }
+  .banner button { background: #fff; color: #111; border: 0; padding: 4px 10px; }
+  .banner button.ghost { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.4); }
+  .legend-map { position: absolute; z-index: 1000; left: 12px; bottom: 28px; background: rgba(17,20,24,.82); color: #fff; border-radius: 9px; padding: 6px 10px; font-size: 12px; display: flex; gap: 10px; }
+  .legend-map[hidden] { display: none; }
+
+  /* Map labels (shared by both map engines) */
+  .bm-lw { width: 0 !important; height: 0 !important; background: none; border: 0; }
+  .lbl { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; pointer-events: none;
+    background: rgba(17,20,24,.86); color: #fff; font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 3px 7px; border-radius: 10px; border: 2px solid var(--c, #fff); font-variant-numeric: tabular-nums; }
+  .lbl.f-front { --c: var(--front); } .lbl.f-back { --c: var(--back); } .lbl.f-left { --c: var(--left); } .lbl.f-right { --c: var(--right); }
+  .lbl.box { background: rgba(255,255,255,.94); color: #111; --c: #fff; }
+  .lbl.meas { --c: #facc15; }
+  .lbl.total { --c: #facc15; background: #facc15; color: #111; }
+  .lbl.dot { width: 10px; height: 10px; padding: 0; border-radius: 50%; background: #fff; border: 2px solid #111; }
+  .lbl.dot.first { width: 14px; height: 14px; background: #facc15; }
+  #map.crosshair, #map.crosshair .leaflet-grab, #map.crosshair .leaflet-interactive { cursor: crosshair !important; }
+  .vh { background: #fff; border: 2px solid #111; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,255,255,.35); cursor: move; }
+  .mh { background: rgba(255,255,255,.55); border: 1.5px dashed #111; border-radius: 50%; cursor: copy; }
+
+  @media (max-width: 820px) {
+    .app { flex-direction: column; height: auto; min-height: 100vh; }
+    .map-wrap { height: 58vh; flex: none; }
+    aside { width: auto; border-right: 0; order: 2; }
+    .scroll { overflow: visible; }
+    header { padding: 14px 16px 10px; }
+    section.tab { padding: 14px 16px 28px; }
+    .banner { max-width: calc(100% - 24px); top: 8px; }
+  }
+  @media print {
+    .app { display: block; height: auto; }
+    .map-wrap { height: 520px; page-break-inside: avoid; }
+    aside { width: auto; border: 0; }
+    .tabs, form.search, .tools, .actions, .row, .banner, .results, .hint, .leaflet-control-container, #tab-about, #tab-compare[data-empty=true] { display: none !important; }
+    section.tab[hidden] { display: block; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <header>
+      <div class="brand">
+        <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="8" fill="#1f6feb"/><path d="M9 23V12l7-4 7 4v11z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M6 27h20M6 25.5v3M26 25.5v3" stroke="#facc15" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <div><h1>Building Measure</h1><p>Type an address and measure the building from the satellite map.</p></div>
+      </div>
+      <form class="search" id="searchForm" autocomplete="off">
+        <input type="text" id="q" placeholder="1300 Glenview Place Wauwatosa, WI 53213" value="1300 Glenview Place Wauwatosa, WI 53213" aria-label="Address">
+        <button class="primary" type="submit" id="goBtn">Find</button>
+      </form>
+      <ul class="results" id="results" hidden></ul>
+    </header>
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="measure">Measure</button>
+      <button role="tab" aria-selected="false" data-tab="compare">Compare</button>
+      <button role="tab" aria-selected="false" data-tab="about">How it works</button>
+    </nav>
+    <div class="scroll">
+      <section class="tab" id="tab-measure">
+        <div class="status" id="status" data-kind="info"><span class="dot"></span><span id="statusText">Search for an address to start. The building outline loads automatically when one is on file; otherwise you can draw it.</span></div>
+
+        <div class="tools">
+          <button id="btnPick" title="Click on any building on the map to load its outline">◎ Pick a building</button>
+          <button id="btnDraw" title="Click each corner of the building">✎ Draw outline</button>
+          <button id="btnMeasure" title="Measure any distance, e.g. building to street">↔ Measure distance</button>
+          <button id="btnClear" title="Remove the outline and measurements">✕ Clear</button>
+        </div>
+        <div class="row">
+          <div class="seg" role="group" aria-label="Units">
+            <button data-units="ft" aria-pressed="true">Feet</button><button data-units="m" aria-pressed="false">Meters</button>
+          </div>
+          <label class="check"><input type="checkbox" id="showBox" checked> Width/depth box</label>
+        </div>
+
+        <h2 style="margin-top:18px">Building</h2>
+        <div id="summary"><div class="empty">No building yet.</div></div>
+        <div class="front-line" id="frontLine" hidden></div>
+
+        <div id="wallsWrap" hidden>
+          <h2>Walls</h2>
+          <table>
+            <thead><tr><th>#</th><th>Side</th><th class="num">Length</th><th class="num">Corner</th></tr></thead>
+            <tbody class="walls" id="walls"></tbody>
+          </table>
+          <div class="legend">
+            <span class="chip"><i style="background:var(--front)"></i>Front</span>
+            <span class="chip"><i style="background:var(--back)"></i>Back</span>
+            <span class="chip"><i style="background:var(--left)"></i>Left side</span>
+            <span class="chip"><i style="background:var(--right)"></i>Right side</span>
+          </div>
+          <p class="hint">Click a wall (here or on the map) to make it the front. Left and right are as seen from the street. Corner is the inside angle where the wall ends; 90° is square.</p>
+        </div>
+
+        <div id="measWrap" hidden>
+          <h2>Distance measurement</h2>
+          <table><tbody id="meas"></tbody></table>
+        </div>
+
+        <div id="exportWrap" hidden>
+          <h2>Share</h2>
+          <div class="actions">
+            <button id="btnCopy">Copy summary</button>
+            <button id="btnCsv">Download CSV</button>
+            <button id="btnPrint">Print</button>
+          </div>
+        </div>
+        <div class="links" id="links" hidden></div>
+      </section>
+
+      <section class="tab" id="tab-compare" hidden>
+        <h2>Compare with plans</h2>
+        <p class="hint" style="margin:0 0 12px">Enter the expected size from plans, a permit, an appraisal or a listing. The table shows how far the measured building is off, and flags anything outside your tolerance.</p>
+        <div class="compare-grid">
+          <div class="field"><label for="exWidth">Side to side (<span class="u">ft</span>)</label><input type="number" step="any" min="0" id="exWidth" data-key="width"></div>
+          <div class="field"><label for="exDepth">Front to back (<span class="u">ft</span>)</label><input type="number" step="any" min="0" id="exDepth" data-key="depth"></div>
+          <div class="field"><label for="exPerim">Perimeter (<span class="u">ft</span>)</label><input type="number" step="any" min="0" id="exPerim" data-key="perimeter"></div>
+          <div class="field"><label for="exArea">Footprint area (<span class="ua">sq ft</span>)</label><input type="number" step="any" min="0" id="exArea" data-key="area"></div>
+          <div class="field"><label for="tol">Tolerance (± %)</label><input type="number" step="any" min="0" id="tol" value="3"></div>
+        </div>
+        <div id="compareOut" style="margin-top:14px"></div>
+      </section>
+
+      <section class="tab prose" id="tab-about" hidden>
+        <h2>Using it</h2>
+        <ol>
+          <li>Type an address and press <b>Find</b>. The map zooms to it and loads the building outline when one is on file.</li>
+          <li>Check the outline against the photo. Drag a white corner to move it, click a dashed circle on a wall to add a corner, and right-click (or double-click) a corner to delete it.</li>
+          <li>No outline, or the wrong building? Use <b>Pick a building</b> and click it, or <b>Draw outline</b> and click each corner (click the first corner or press <kbd>Enter</kbd> to finish).</li>
+          <li>The front is set to the wall facing the address's street. Click any wall to change it. Width, depth and the side labels update to match.</li>
+          <li>Use <b>Measure distance</b> for anything else, like setbacks or the distance to the street. <kbd>Backspace</kbd> removes the last point and <kbd>Esc</kbd> stops.</li>
+          <li>Open the <b>Compare</b> tab to check the measurements against plans, and use <b>Share</b> to copy, download or print the results.</li>
+        </ol>
+
+        <h2>Accuracy</h2>
+        <p>Measurements are calculated from map coordinates and are usually within about 1–2 ft for a carefully traced outline. Satellite photos show the roof, so roof overhangs (often 1–2 ft per side) make walls measure a little long, and tall buildings can look slightly shifted. Use these numbers for estimates and checks, not for legal surveys.</p>
+        <p>Building outlines come from OpenStreetMap. Free satellite imagery is from Esri; Google imagery is used when a Google Maps key is added below.</p>
+
+        <h2>Google Maps</h2>
+        <p id="engineNote"></p>
+        <div class="field"><label for="gkey">Google Maps API key (needs the Maps JavaScript API and Geocoding API turned on)</label>
+          <div style="display:flex; gap:8px"><input type="password" id="gkey" placeholder="AIza…"><button id="btnKey">Save</button></div>
+        </div>
+        <p class="hint">The key is saved only in this browser on this computer. Leave it blank to use the free map.</p>
+
+        <h2>Shared development with Claude</h2>
+        <p>This tool was built with a shared workflow: a person sets the goal, Claude does most of the drafting and building, and people review and make the calls. The brief was a two-minute recorded call. Claude transcribed it, turned it into a list of requirements, built this page, and tested the address lookup and the measurement math before it went out for review.</p>
+        <div class="flow">
+          <div><b>1. Brief</b>Goal, examples, must-haves</div>
+          <div><b>2. Build</b>Claude drafts a working version</div>
+          <div><b>3. Review</b>People test it and comment</div>
+          <div><b>4. Deliver</b>Approved version ships</div>
+        </div>
+        <p>On a team, everyone does what they're best at. The project lead or client owns the goal and signs off on the result. Content contributors, such as writers, designers, estimators or surveyors, supply the copy, images, data and business rules through a shared folder or task tracker, without needing to code. The developer works with Claude in the code: Claude drafts features, writes tests, explains trade-offs and takes on the repetitive work, while the developer steers the direction, reviews every change and checks the result against the real need.</p>
+        <p>The work runs in short loops. Each one ends with something people can actually use, a working page rather than a plan. Feedback comes back as comments or a quick call, Claude makes the changes, and version control (Git) keeps a history of every change so nothing is lost and anything can be rolled back. Because a working draft takes hours instead of weeks, the team can try a few options and keep the best one.</p>
+        <p>People stay responsible for what matters: what gets built, whether the numbers are right, and what goes to the client. Claude doesn't publish, send or deploy on its own; a person reviews and approves every delivery. For this tool, a next loop could connect the company's Google Maps account, save projects so the team can share measurements, export a PDF for estimates, and check results against a few buildings with known dimensions to set an accuracy standard.</p>
+      </section>
+    </div>
+  </aside>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="banner" id="banner" hidden><span id="bannerText"></span><span id="bannerBtns"></span></div>
+    <div class="legend-map" id="legendMap" hidden>
+      <span class="chip"><i style="background:var(--front)"></i>Front</span>
+      <span class="chip"><i style="background:var(--back)"></i>Back</span>
+      <span class="chip"><i style="background:var(--left)"></i>Left</span>
+      <span class="chip"><i style="background:var(--right)"></i>Right</span>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+"use strict";
+
+/* ---------- Geometry ---------- */
+const R = 6371008.8, RAD = Math.PI / 180, M2FT = 3.280839895, M2SQFT = 10.7639104;
+
+function centroid(pts) {
+  const c = pts.reduce((a, p) => ({ lat: a.lat + p.lat, lng: a.lng + p.lng }), { lat: 0, lng: 0 });
+  return { lat: c.lat / pts.length, lng: c.lng / pts.length };
+}
+// Local flat coordinates in meters (east = x, north = y). Accurate to well under 0.1% at building scale.
+function toLocal(p, o) { return { x: (p.lng - o.lng) * RAD * R * Math.cos(o.lat * RAD), y: (p.lat - o.lat) * RAD * R }; }
+function fromLocal(v, o) { return { lat: o.lat + v.y / (R * RAD), lng: o.lng + v.x / (R * RAD * Math.cos(o.lat * RAD)) }; }
+function haversine(a, b) {
+  const dLat = (b.lat - a.lat) * RAD, dLng = (b.lng - a.lng) * RAD;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * RAD) * Math.cos(b.lat * RAD) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const dot = (a, b) => a.x * b.x + a.y * b.y;
+const cross = (a, b) => a.x * b.y - a.y * b.x;
+const unit = v => { const l = Math.hypot(v.x, v.y) || 1; return { x: v.x / l, y: v.y / l }; };
+
+function signedArea(P) {
+  let s = 0;
+  for (let i = 0; i < P.length; i++) s += cross(P[i], P[(i + 1) % P.length]);
+  return s / 2;
+}
+
+/** Measure a building outline. frontIdx is the wall treated as the front. */
+function analyze(pts, frontIdx) {
+  const o = centroid(pts), P = pts.map(p => toLocal(p, o)), n = P.length;
+  const A = signedArea(P), ccw = A > 0;
+  const walls = P.map((p, i) => {
+    const q = P[(i + 1) % n], d = { x: q.x - p.x, y: q.y - p.y }, len = Math.hypot(d.x, d.y);
+    const u = unit(d);
+    return { i, len, dir: u, normal: ccw ? { x: u.y, y: -u.x } : { x: -u.y, y: u.x } };
+  });
+  walls.forEach((w, i) => {
+    const nx = walls[(i + 1) % n], turn = Math.atan2(cross(w.dir, nx.dir), dot(w.dir, nx.dir)) / RAD;
+    w.corner = ccw ? 180 - turn : 180 + turn;
+  });
+  const front = walls[((frontIdx % n) + n) % n];
+  const f = front.normal, u = front.dir, r = { x: -f.y, y: f.x }; // r: viewer's right when facing the front
+  walls.forEach(w => {
+    const ang = Math.atan2(dot(w.normal, r), dot(w.normal, f)) / RAD;
+    w.facing = w === front || Math.abs(ang) <= 45 ? "front" : Math.abs(ang) >= 135 ? "back" : ang > 0 ? "right" : "left";
+  });
+  const su = P.map(p => dot(p, u)), sf = P.map(p => dot(p, f));
+  const box = { umin: Math.min(...su), umax: Math.max(...su), fmin: Math.min(...sf), fmax: Math.max(...sf) };
+  return {
+    origin: o, walls, front: front.i, u, f, box,
+    width: box.umax - box.umin, depth: box.fmax - box.fmin,
+    area: Math.abs(A), perimeter: walls.reduce((s, w) => s + w.len, 0),
+  };
+}
+
+/** Drop points that sit on a straight wall or make tiny jogs, so each wall is one row. */
+function simplify(pts) {
+  let a = pts.slice();
+  if (a.length > 2 && a[0].lat === a[a.length - 1].lat && a[0].lng === a[a.length - 1].lng) a.pop();
+  for (let changed = true; changed && a.length > 3;) {
+    changed = false;
+    const o = centroid(a), P = a.map(p => toLocal(p, o));
+    for (let i = 0; i < a.length; i++) {
+      const pv = P[(i - 1 + a.length) % a.length], c = P[i], nx = P[(i + 1) % a.length];
+      const d1 = { x: c.x - pv.x, y: c.y - pv.y }, d2 = { x: nx.x - c.x, y: nx.y - c.y };
+      const turn = Math.abs(Math.atan2(cross(d1, d2), dot(d1, d2))) / RAD;
+      if (turn < 4 || Math.hypot(d1.x, d1.y) < 0.2) { a.splice(i, 1); changed = true; break; }
+    }
+  }
+  return a;
+}
+
+function pointInPoly(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.lat > p.lat) !== (b.lat > p.lat) && p.lng < (b.lng - a.lng) * (p.lat - a.lat) / (b.lat - a.lat) + a.lng) inside = !inside;
+  }
+  return inside;
+}
+function nearestOnSegment(p, a, b) {
+  const ab = { x: b.x - a.x, y: b.y - a.y }, t = Math.max(0, Math.min(1, dot({ x: p.x - a.x, y: p.y - a.y }, ab) / (dot(ab, ab) || 1)));
+  return { x: a.x + ab.x * t, y: a.y + ab.y * t };
+}
+function distToPoly(p, poly) {
+  const P = poly.map(q => toLocal(q, p)), z = { x: 0, y: 0 };
+  let best = Infinity;
+  for (let i = 0; i < P.length; i++) { const q = nearestOnSegment(z, P[i], P[(i + 1) % P.length]); best = Math.min(best, Math.hypot(q.x, q.y)); }
+  return best;
+}
+
+/* ---------- Formatting ---------- */
+const S = {
+  units: "ft", showBox: true, mode: "idle", pts: [], front: 0, frontNote: "", source: "",
+  draft: [], measure: [], cursor: null, hover: null, place: null, roads: [],
+  expected: { width: null, depth: null, perimeter: null, area: null }, tol: 3,
+};
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const nf = (v, d) => v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+function fmtLen(m) { return S.units === "ft" ? nf(m * M2FT, 1) + " ft" : nf(m, 2) + " m"; }
+function fmtFtIn(m) {
+  let inches = Math.round(m * M2FT * 12), ft = Math.floor(inches / 12);
+  return `${ft}′ ${inches - ft * 12}″`;
+}
+function fmtArea(m2) { return S.units === "ft" ? nf(Math.round(m2 * M2SQFT), 0) + " sq ft" : nf(m2, 1) + " m²"; }
+const lenIn = m => S.units === "ft" ? m * M2FT : m;           // meters -> display unit
+const lenOut = v => S.units === "ft" ? v / M2FT : v;          // display unit -> meters
+const areaIn = m2 => S.units === "ft" ? m2 * M2SQFT : m2;
+const areaOut = v => S.units === "ft" ? v / M2SQFT : v;
+const FACE = { front: "Front", back: "Back", left: "Left side", right: "Right side" };
+const FACE_COLOR = { front: "#f59e0b", back: "#a855f7", left: "#06b6d4", right: "#ec4899" };
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+};
+
+/* ---------- Map engines (free Leaflet + Esri, or Google Maps with a key) ---------- */
+function LeafletEngine(el, hooks) {
+  const map = L.map(el, { maxZoom: 22, zoomSnap: 0.5, doubleClickZoom: true }).setView([39.5, -98.35], 4);
+  const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+  const opts = { maxNativeZoom: 19, maxZoom: 22 };
+  const sat = L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", { ...opts, attribution: "Imagery © Esri, Maxar, Earthstar Geographics · Outlines © OpenStreetMap contributors" }).addTo(map);
+  const street = L.tileLayer(esri + "World_Street_Map/MapServer/tile/{z}/{y}/{x}", { ...opts, attribution: "© Esri · © OpenStreetMap contributors" });
+  const roads = L.tileLayer(esri + "Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", opts).addTo(map);
+  L.control.layers({ "Satellite": sat, "Street map": street }, { "Street names": roads }, { position: "topright" }).addTo(map);
+  L.control.scale({ position: "bottomright" }).addTo(map);
+
+  const g = { fill: L.layerGroup().addTo(map), edges: L.layerGroup().addTo(map), preview: L.layerGroup().addTo(map),
+    handles: L.layerGroup().addTo(map), labels: L.layerGroup().addTo(map), marker: L.layerGroup().addTo(map) };
+  let fill = null, vh = [], mh = [];
+  const ll = e => ({ lat: e.lat, lng: e.lng });
+  map.on("click", e => hooks.onMapClick(ll(e.latlng)));
+  map.on("mousemove", e => hooks.onMouseMove(ll(e.latlng)));
+  map.on("zoomend", () => hooks.onZoom());
+  const icon = (cls, size) => L.divIcon({ className: cls, iconSize: [size, size] });
+
+  return {
+    kind: "leaflet",
+    setView(p, z) { map.setView([p.lat, p.lng], z); },
+    fit(pts) { map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lng])), { padding: [70, 70], maxZoom: 20.5 }); },
+    pxDist(a, b) { return map.latLngToContainerPoint([a.lat, a.lng]).distanceTo(map.latLngToContainerPoint([b.lat, b.lng])); },
+    setMode(mode) {
+      el.classList.toggle("crosshair", mode !== "idle");
+      mode === "idle" ? map.doubleClickZoom.enable() : map.doubleClickZoom.disable();
+    },
+    setMarker(p) {
+      g.marker.clearLayers();
+      if (p) L.circleMarker([p.lat, p.lng], { radius: 6, color: "#fff", weight: 2, fillColor: "#ef4444", fillOpacity: 1, interactive: false }).addTo(g.marker);
+    },
+    drawShape(pts, editable) {
+      if (pts.length < 3) { g.fill.clearLayers(); g.handles.clearLayers(); fill = null; vh = []; mh = []; return; }
+      const lls = pts.map(p => [p.lat, p.lng]);
+      if (!fill) fill = L.polygon(lls, { stroke: false, fillColor: "#f59e0b", fillOpacity: .13, interactive: false }).addTo(g.fill);
+      else fill.setLatLngs(lls);
+      if (!editable) { g.handles.clearLayers(); vh = []; mh = []; return; }
+      const mids = pts.map((p, i) => { const q = pts[(i + 1) % pts.length]; return [(p.lat + q.lat) / 2, (p.lng + q.lng) / 2]; });
+      if (vh.length !== pts.length) {
+        g.handles.clearLayers();
+        mh = mids.map((m, i) => {
+          const k = L.marker(m, { icon: icon("mh", 12), title: "Click to add a corner here", keyboard: false }).addTo(g.handles);
+          k.on("click", e => { L.DomEvent.stop(e); hooks.onVertexInsert(i + 1, ll(k.getLatLng())); });
+          return k;
+        });
+        vh = pts.map((p, i) => {
+          const k = L.marker([p.lat, p.lng], { icon: icon("vh", 14), draggable: true, title: "Drag to move · right-click to delete", keyboard: false }).addTo(g.handles);
+          k.on("dragstart", () => { k._busy = true; });
+          k.on("drag", () => hooks.onVertexMove(i, ll(k.getLatLng())));
+          k.on("dragend", () => { k._busy = false; hooks.onVertexMove(i, ll(k.getLatLng())); });
+          const del = e => { L.DomEvent.stop(e); hooks.onVertexDelete(i); };
+          k.on("contextmenu", del); k.on("dblclick", del);
+          return k;
+        });
+      } else {
+        pts.forEach((p, i) => { if (!vh[i]._busy) vh[i].setLatLng([p.lat, p.lng]); });
+        mids.forEach((m, i) => mh[i].setLatLng(m));
+      }
+    },
+    drawEdges(edges) {
+      g.edges.clearLayers();
+      for (const e of edges) {
+        const path = [[e.a.lat, e.a.lng], [e.b.lat, e.b.lng]];
+        L.polyline(path, { color: e.color, weight: e.weight, opacity: 1, interactive: false, lineCap: "round" }).addTo(g.edges);
+        if (e.clickable) {
+          const hit = L.polyline(path, { weight: 18, opacity: 0, interactive: true }).addTo(g.edges);
+          hit.on("click", ev => { L.DomEvent.stop(ev); hooks.onEdgeClick(e.idx); });
+          hit.on("mouseover", () => hooks.onEdgeHover(e.idx));
+          hit.on("mouseout", () => hooks.onEdgeHover(null));
+        }
+      }
+    },
+    drawLines(lines) {
+      g.preview.clearLayers();
+      for (const l of lines) L.polyline(l.pts.map(p => [p.lat, p.lng]), { color: l.color, weight: l.weight || 2, dashArray: l.dash || null, opacity: l.opacity ?? 1, interactive: false }).addTo(g.preview);
+    },
+    drawLabels(list) {
+      g.labels.clearLayers();
+      for (const l of list) L.marker([l.lat, l.lng], { icon: L.divIcon({ className: "bm-lw", html: `<div class="lbl ${l.cls || ""}">${l.html}</div>`, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(g.labels);
+    },
+  };
+}
+
+function GoogleEngine(el, hooks) {
+  const gm = google.maps;
+  const map = new gm.Map(el, {
+    center: { lat: 39.5, lng: -98.35 }, zoom: 4, mapTypeId: "hybrid", tilt: 0, rotateControl: false, fullscreenControl: false,
+    clickableIcons: false, gestureHandling: "greedy", maxZoom: 22,
+    mapTypeControlOptions: { mapTypeIds: ["hybrid", "satellite", "roadmap"] },
+  });
+  class Labels extends gm.OverlayView {
+    constructor() { super(); this.items = []; this.box = document.createElement("div"); this.box.style.position = "absolute"; }
+    onAdd() { this.getPanes().floatPane.appendChild(this.box); }
+    onRemove() { this.box.remove(); }
+    draw() {
+      const pr = this.getProjection(); if (!pr) return;
+      for (const it of this.items) { const p = pr.fromLatLngToDivPixel(new gm.LatLng(it.lat, it.lng)); it.el.style.left = p.x + "px"; it.el.style.top = p.y + "px"; }
+    }
+    set(list) {
+      this.box.textContent = "";
+      this.items = list.map(l => { const e = document.createElement("div"); e.className = "lbl " + (l.cls || ""); e.innerHTML = l.html; this.box.appendChild(e); return { ...l, el: e }; });
+      this.draw();
+    }
+  }
+  const labels = new Labels(); labels.setMap(map);
+  let poly = null, edges = [], lines = [], marker = null, editable = null;
+  const ll = e => ({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+  map.addListener("click", e => hooks.onMapClick(ll(e)));
+  map.addListener("mousemove", e => hooks.onMouseMove(ll(e)));
+  map.addListener("idle", () => hooks.onZoom());
+
+  function bindPath(path) {
+    const at = i => { const p = path.getAt(i); return { lat: p.lat(), lng: p.lng() }; };
+    path.addListener("set_at", i => hooks.onVertexMove(i, at(i)));
+    path.addListener("insert_at", i => hooks.onVertexInsert(i, at(i)));
+    path.addListener("remove_at", i => hooks.onVertexDelete(i));
+  }
+  const same = (path, pts) => path.getLength() === pts.length &&
+    pts.every((p, i) => { const q = path.getAt(i); return Math.abs(q.lat() - p.lat) < 1e-10 && Math.abs(q.lng() - p.lng) < 1e-10; });
+
+  return {
+    kind: "google",
+    setView(p, z) { map.setCenter(p); map.setZoom(z); },
+    fit(pts) { const b = new gm.LatLngBounds(); pts.forEach(p => b.extend(p)); map.fitBounds(b, 70); },
+    pxDist(a, b) {
+      const pr = labels.getProjection(); if (!pr) return Infinity;
+      const p = pr.fromLatLngToContainerPixel(new gm.LatLng(a.lat, a.lng)), q = pr.fromLatLngToContainerPixel(new gm.LatLng(b.lat, b.lng));
+      return Math.hypot(p.x - q.x, p.y - q.y);
+    },
+    setMode(mode) { map.setOptions({ draggableCursor: mode === "idle" ? null : "crosshair", disableDoubleClickZoom: mode !== "idle" }); },
+    setMarker(p) {
+      if (marker) marker.setMap(null);
+      marker = p ? new gm.Circle({ map, center: p, radius: 1.2, strokeColor: "#fff", strokeWeight: 2, fillColor: "#ef4444", fillOpacity: 1, clickable: false }) : null;
+    },
+    drawShape(pts, edit) {
+      if (pts.length < 3) { if (poly) poly.setMap(null); poly = null; editable = null; return; }
+      if (!poly) {
+        poly = new gm.Polygon({ map, paths: pts, strokeOpacity: 0, fillColor: "#f59e0b", fillOpacity: .13, zIndex: 1 });
+        bindPath(poly.getPath());
+        poly.addListener("contextmenu", e => { const path = poly.getPath(); if (e.vertex != null && path.getLength() > 3) path.removeAt(e.vertex); });
+      } else if (!same(poly.getPath(), pts)) {
+        poly.setPath(pts); bindPath(poly.getPath());
+      }
+      if (edit !== editable) { editable = edit; poly.setOptions({ editable: edit, clickable: edit }); }
+    },
+    drawEdges(list) {
+      edges.forEach(e => e.setMap(null)); edges = [];
+      for (const e of list) {
+        edges.push(new gm.Polyline({ map, path: [e.a, e.b], strokeColor: e.color, strokeWeight: e.weight, clickable: false, zIndex: 2 }));
+        if (e.clickable) {
+          const hit = new gm.Polyline({ map, path: [e.a, e.b], strokeOpacity: 0.01, strokeWeight: 18, zIndex: 3 });
+          hit.addListener("click", () => hooks.onEdgeClick(e.idx));
+          hit.addListener("mouseover", () => hooks.onEdgeHover(e.idx));
+          hit.addListener("mouseout", () => hooks.onEdgeHover(null));
+          edges.push(hit);
+        }
+      }
+    },
+    drawLines(list) {
+      lines.forEach(l => l.setMap(null));
+      lines = list.map(l => new gm.Polyline({
+        map, path: l.pts, clickable: false, zIndex: 4, strokeColor: l.color, strokeWeight: l.weight || 2,
+        strokeOpacity: l.dash ? 0 : (l.opacity ?? 1),
+        icons: l.dash ? [{ icon: { path: "M 0,-1 0,1", strokeOpacity: l.opacity ?? 1, strokeColor: l.color, scale: 2 }, offset: "0", repeat: "10px" }] : null,
+      }));
+    },
+    drawLabels(list) { labels.set(list); },
+  };
+}
+
+/* ---------- Lookups: addresses, building outlines, streets ---------- */
+async function fetchJSON(url, opts = {}, ms = 15000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { ...opts, signal: ctl.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+const NOMINATIM = "https://nominatim.openstreetmap.org";
+const geoPoly = gj => {
+  if (!gj) return null;
+  const ring = gj.type === "Polygon" ? gj.coordinates[0] : gj.type === "MultiPolygon" ? gj.coordinates[0][0] : null;
+  return ring ? ring.map(([lng, lat]) => ({ lat, lng })) : null;
+};
+
+async function geocodeFree(q) {
+  try {
+    const d = await fetchJSON(`${NOMINATIM}/search?format=jsonv2&addressdetails=1&polygon_geojson=1&polygon_threshold=0&limit=5&q=${encodeURIComponent(q)}`);
+    return d.map(r => ({
+      lat: +r.lat, lng: +r.lon, label: r.display_name, road: r.address?.road || "",
+      precise: !!(r.address?.house_number || r.category === "building"),
+      polygon: r.category === "building" ? geoPoly(r.geojson) : null,
+    }));
+  } catch {
+    const d = await fetchJSON(`https://photon.komoot.io/api/?limit=5&q=${encodeURIComponent(q)}`);
+    return d.features.map(f => {
+      const p = f.properties, [lng, lat] = f.geometry.coordinates;
+      const label = [p.name, [p.housenumber, p.street].filter(Boolean).join(" "), p.city, p.state, p.postcode, p.country].filter(Boolean).join(", ");
+      return { lat, lng, label, road: p.street || "", precise: !!p.housenumber, polygon: null };
+    });
+  }
+}
+
+function geocodeGoogle(q) {
+  return new Promise((resolve, reject) => {
+    new google.maps.Geocoder().geocode({ address: q }, (res, status) => {
+      if (status === "ZERO_RESULTS") return resolve([]);
+      if (status !== "OK") return reject(new Error("Google geocoder: " + status));
+      resolve(res.slice(0, 5).map(r => ({
+        lat: r.geometry.location.lat(), lng: r.geometry.location.lng(), label: r.formatted_address,
+        road: (r.address_components.find(c => c.types.includes("route")) || {}).long_name || "",
+        precise: ["ROOFTOP", "RANGE_INTERPOLATED"].includes(r.geometry.location_type), polygon: null,
+      })));
+    });
+  });
+}
+
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
+function parseOverpass(d) {
+  const buildings = [], roads = [];
+  for (const el of d.elements || []) {
+    const t = el.tags || {};
+    if (el.type === "way" && t.building && el.geometry) buildings.push({ pts: el.geometry.map(g => ({ lat: g.lat, lng: g.lon })), name: t.name || "" });
+    else if (el.type === "relation" && t.building) {
+      const outer = (el.members || []).find(m => m.role === "outer" && m.geometry);
+      if (outer) buildings.push({ pts: outer.geometry.map(g => ({ lat: g.lat, lng: g.lon })), name: t.name || "" });
+    } else if (el.type === "way" && t.highway && el.geometry) roads.push({ name: t.name, pts: el.geometry.map(g => ({ lat: g.lat, lng: g.lon })) });
+  }
+  return { buildings, roads };
+}
+// Public Overpass servers are often busy: try the main one, then the mirror, one at a time.
+async function overpass(p) {
+  const q = `[out:json][timeout:20];(way["building"](around:50,${p.lat},${p.lng});relation["building"](around:50,${p.lat},${p.lng});way["highway"]["name"](around:150,${p.lat},${p.lng}););out geom;`;
+  let lastErr;
+  for (const url of OVERPASS) {
+    try { return parseOverpass(await fetchJSON(`${url}?data=${encodeURIComponent(q)}`, {}, 10000)); }
+    catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
+async function reverseFree(p, zoom) {
+  return fetchJSON(`${NOMINATIM}/reverse?format=jsonv2&addressdetails=1&polygon_geojson=1&zoom=${zoom}&lat=${p.lat}&lon=${p.lng}`);
+}
+
+function segmentsCross(a, b, c, d) {
+  const o = (p, q, r) => Math.sign(cross({ x: q.x - p.x, y: q.y - p.y }, { x: r.x - p.x, y: r.y - p.y }));
+  return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
+}
+/** The building the point is on; otherwise the closest one (within 25 m) that isn't across a street. */
+function chooseBuilding(list, p, roads = []) {
+  const area = b => { const o = centroid(b.pts); return Math.abs(signedArea(b.pts.map(q => toLocal(q, o)))); };
+  const inside = list.filter(b => b.pts.length >= 3 && pointInPoly(p, b.pts)).sort((a, b) => area(a) - area(b));
+  if (inside.length) return { ...inside[0], inside: true };
+  const z = { x: 0, y: 0 }, roadSegs = [];
+  for (const r of roads) { const P = r.pts.map(q => toLocal(q, p)); for (let i = 0; i + 1 < P.length; i++) roadSegs.push([P[i], P[i + 1]]); }
+  let best = null, bd = 25; // meters
+  for (const b of list) {
+    if (b.pts.length < 3) continue;
+    const P = b.pts.map(q => toLocal(q, p));
+    let near = null, nd = Infinity;
+    for (let i = 0; i < P.length; i++) { const q = nearestOnSegment(z, P[i], P[(i + 1) % P.length]), d = Math.hypot(q.x, q.y); if (d < nd) { nd = d; near = q; } }
+    if (nd < bd && !roadSegs.some(([c, d]) => segmentsCross(z, near, c, d))) { bd = nd; best = b; }
+  }
+  return best && { ...best, inside: false };
+}
+
+const ABBR = { street: "st", avenue: "ave", road: "rd", drive: "dr", boulevard: "blvd", lane: "ln", court: "ct", place: "pl", terrace: "ter",
+  parkway: "pkwy", highway: "hwy", circle: "cir", north: "n", south: "s", east: "e", west: "w", trail: "trl", square: "sq" };
+const normRoad = s => (s || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean).map(w => ABBR[w] || w).join(" ");
+
+/** Pick the wall that faces the address's street (or the nearest street). */
+function autoFront(pts, roads, roadName, hintPoint) {
+  const a = analyze(pts, 0), o = a.origin, maxLen = Math.max(...a.walls.map(w => w.len));
+  let target = null, note = "";
+  const want = normRoad(roadName);
+  const outside = hintPoint && !pointInPoly(hintPoint, pts) && distToPoly(hintPoint, pts) > 3;
+  let cands = want ? roads.filter(r => normRoad(r.name) === want) : [];
+  // The address's own street wasn't found: the address point (usually toward the street) is a better guide than some other street.
+  if (!cands.length) cands = want && outside ? [] : roads;
+  let bd = Infinity;
+  for (const r of cands) {
+    const P = r.pts.map(q => toLocal(q, o));
+    for (let i = 0; i + 1 < P.length; i++) {
+      const q = nearestOnSegment({ x: 0, y: 0 }, P[i], P[i + 1]), d = Math.hypot(q.x, q.y);
+      if (d < bd) { bd = d; target = unit(q); note = r.name; }
+    }
+  }
+  if (!target && outside) {
+    target = unit(toLocal(hintPoint, o)); note = roadName || "the address point";
+  }
+  if (!target) {
+    const longest = a.walls.reduce((b, w) => (w.len > b.len ? w : b));
+    return { idx: longest.i, note: "" };
+  }
+  let best = null;
+  for (const w of a.walls) if (w.len >= 0.3 * maxLen && (!best || dot(w.normal, target) > dot(best.normal, target))) best = w;
+  return { idx: best.i, note };
+}
+
+/* ---------- App ---------- */
+const $ = id => document.getElementById(id);
+let engine;
+
+function status(text, kind = "info") { $("status").dataset.kind = kind; $("statusText").innerHTML = text; }
+function banner(text, buttons = []) {
+  $("banner").hidden = !text;
+  $("bannerText").textContent = text || "";
+  const box = $("bannerBtns"); box.textContent = "";
+  for (const b of buttons) { const el = document.createElement("button"); el.textContent = b.label; if (b.ghost) el.className = "ghost"; el.onclick = b.onClick; box.appendChild(el); }
+}
+
+function setMode(mode) {
+  S.mode = mode; S.cursor = null;
+  engine.setMode(mode);
+  $("btnDraw").classList.toggle("active", mode === "draw");
+  $("btnMeasure").classList.toggle("active", mode === "measure");
+  $("btnPick").classList.toggle("active", mode === "pick");
+  if (mode === "draw") banner("Click each corner of the building. Click the first corner or press Enter to finish.", [
+    { label: "Finish", onClick: finishDraw }, { label: "Undo", ghost: true, onClick: undo }, { label: "Cancel", ghost: true, onClick: () => { S.draft = []; setMode("idle"); } }]);
+  else if (mode === "measure") banner("Click points to measure. Backspace removes the last point.", [
+    { label: "Done", onClick: () => setMode("idle") }, { label: "Undo", ghost: true, onClick: undo }]);
+  else if (mode === "pick") banner("Click a building on the map to load its outline.", [{ label: "Cancel", ghost: true, onClick: () => setMode("idle") }]);
+  else banner("");
+  render();
+}
+
+function undo() {
+  if (S.mode === "draw") S.draft.pop();
+  else if (S.mode === "measure") S.measure.pop();
+  render();
+}
+
+function finishDraw() {
+  if (S.draft.length < 3) { banner("Click at least 3 corners first.", [{ label: "Cancel", ghost: true, onClick: () => { S.draft = []; setMode("idle"); } }]); return; }
+  S.pts = S.draft.slice(); S.draft = []; S.source = "drawn";
+  const af = autoFront(S.pts, S.roads, S.place?.road, S.place);
+  S.front = af.idx; S.frontNote = af.note;
+  setMode("idle");
+  status("Outline drawn. Drag corners to fine-tune, and click a wall to change which side is the front.", "ok");
+}
+
+const hooks = {
+  onMapClick(p) {
+    if (S.mode === "draw") {
+      if (S.draft.length >= 3 && engine.pxDist(p, S.draft[0]) < 14) return finishDraw();
+      S.draft.push(p); render();
+    } else if (S.mode === "measure") { S.measure.push(p); render(); }
+    else if (S.mode === "pick") { setMode("idle"); findBuilding(p, { road: S.place?.road, picked: true }); }
+  },
+  onMouseMove(p) {
+    if (S.mode !== "draw" && S.mode !== "measure") return;
+    S.cursor = p;
+    if (!hooks._raf) hooks._raf = requestAnimationFrame(() => { hooks._raf = 0; render(); });
+  },
+  onVertexMove(i, p) { if (!S.pts[i]) return; S.pts[i] = p; S.source = S.source === "drawn" ? "drawn" : "adjusted"; render(); },
+  onVertexInsert(i, p) { S.pts.splice(i, 0, p); if (S.front >= i) S.front++; render(); },
+  onVertexDelete(i) {
+    if (S.pts.length <= 3) return;
+    S.pts.splice(i, 1); if (S.front >= i) S.front = Math.max(0, S.front - 1);
+    S.front %= S.pts.length; render();
+  },
+  onZoom() { if (S.pts.length >= 3) render(); },
+  onEdgeClick(i) { S.front = i; S.frontNote = ""; S.frontManual = true; render(); },
+  onEdgeHover(i) { if (S.hover === i) return; S.hover = i; render(); },
+};
+
+function render() {
+  const n = S.pts.length, edit = S.mode === "idle";
+  engine.drawShape(S.pts, edit);
+  const edges = [], lines = [], labels = [];
+  let a = null;
+  if (n >= 3) {
+    a = analyze(S.pts, S.front);
+    // Meters per screen pixel, so labels sit just clear of the walls at any zoom.
+    let mpp = 10 / engine.pxDist(a.origin, fromLocal({ x: 10, y: 0 }, a.origin));
+    if (!isFinite(mpp) || mpp <= 0) mpp = Math.max(a.width, a.depth) / 300;
+    const clear = (v, halfW, halfH, gap) => (Math.abs(v.x) * halfW + Math.abs(v.y) * halfH + gap) * mpp;
+    for (const w of a.walls) {
+      const p = S.pts[w.i], q = S.pts[(w.i + 1) % n];
+      edges.push({ a: p, b: q, idx: w.i, clickable: edit, color: FACE_COLOR[w.facing], weight: w.i === S.hover ? 8 : w.i === a.front ? 6 : 4 });
+      if (engine.pxDist(p, q) < 56 && w.i !== S.hover && w.i !== a.front) continue; // too short to label at this zoom
+      const m = toLocal({ lat: (p.lat + q.lat) / 2, lng: (p.lng + q.lng) / 2 }, a.origin);
+      const off = clear(w.normal, 42, 11, 6);
+      const pos = fromLocal({ x: m.x + w.normal.x * off, y: m.y + w.normal.y * off }, a.origin);
+      labels.push({ ...pos, cls: "f-" + w.facing, html: `${w.i + 1} · ${fmtLen(w.len)}` });
+    }
+    if (S.showBox) {
+      const { u, f, box: b, origin: o } = a, at = (su, sf) => fromLocal({ x: u.x * su + f.x * sf, y: u.y * su + f.y * sf }, o);
+      lines.push({ pts: [at(b.umin, b.fmin), at(b.umax, b.fmin), at(b.umax, b.fmax), at(b.umin, b.fmax), at(b.umin, b.fmin)], color: "#ffffff", dash: "6 6", weight: 1.5, opacity: .9 });
+      const fo = clear(f, 42, 11, 6) * 2 + clear(f, 62, 11, 4), uo = clear(u, 42, 11, 6) * 2 + clear(u, 68, 11, 4);
+      labels.push({ ...at((b.umin + b.umax) / 2, b.fmax + fo), cls: "box", html: `Side to side ${fmtLen(a.width)}` });
+      labels.push({ ...at(b.umax + uo, (b.fmin + b.fmax) / 2), cls: "box", html: `Front to back ${fmtLen(a.depth)}` });
+    }
+  }
+  if (S.mode === "draw" && S.draft.length) {
+    const pts = S.cursor ? [...S.draft, S.cursor] : S.draft;
+    lines.push({ pts, color: "#facc15", weight: 2.5 });
+    S.draft.forEach((p, i) => labels.push({ ...p, cls: "dot" + (i === 0 ? " first" : ""), html: "" }));
+    for (let i = 0; i + 1 < pts.length; i++) labels.push({ lat: (pts[i].lat + pts[i + 1].lat) / 2, lng: (pts[i].lng + pts[i + 1].lng) / 2, cls: "meas", html: fmtLen(haversine(pts[i], pts[i + 1])) });
+  }
+  if (S.measure.length) {
+    const live = S.mode === "measure" && S.cursor, pts = live ? [...S.measure, S.cursor] : S.measure;
+    lines.push({ pts, color: "#facc15", weight: 3 });
+    S.measure.forEach(p => labels.push({ ...p, cls: "dot", html: "" }));
+    let total = 0;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const d = haversine(pts[i], pts[i + 1]); total += d;
+      labels.push({ lat: (pts[i].lat + pts[i + 1].lat) / 2, lng: (pts[i].lng + pts[i + 1].lng) / 2, cls: "meas", html: fmtLen(d) });
+    }
+    if (pts.length > 2) labels.push({ ...pts[pts.length - 1], cls: "total", html: `Total ${fmtLen(total)}` });
+  }
+  engine.drawEdges(edges); engine.drawLines(lines); engine.drawLabels(labels);
+  $("legendMap").hidden = !a;
+  renderPanel(a);
+}
+
+function renderPanel(a) {
+  S.last = a;
+  if (!a) {
+    $("summary").innerHTML = `<div class="empty">${S.mode === "draw" ? "Drawing… click the building's corners." : "No building yet."}</div>`;
+    $("frontLine").hidden = $("wallsWrap").hidden = true;
+  } else {
+    const card = (k, v, s) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s || "&nbsp;"}</div></div>`;
+    $("summary").innerHTML = `<div class="cards">${
+      card("Front to back", fmtLen(a.depth), S.units === "ft" ? fmtFtIn(a.depth) : nf(a.depth * M2FT, 1) + " ft") +
+      card("Side to side", fmtLen(a.width), S.units === "ft" ? fmtFtIn(a.width) : nf(a.width * M2FT, 1) + " ft") +
+      card("Footprint area", fmtArea(a.area), S.units === "ft" ? nf(a.area, 1) + " m²" : nf(Math.round(a.area * M2SQFT), 0) + " sq ft") +
+      card("Perimeter", fmtLen(a.perimeter), `${a.walls.length} walls`)}</div>`;
+    const fw = a.walls[a.front];
+    $("frontLine").hidden = false;
+    $("frontLine").innerHTML = `Front: <b>wall ${fw.i + 1}</b> (${fmtLen(fw.len)})` + (S.frontNote ? `, facing ${esc(S.frontNote)}` : "") +
+      ` · Outline: ${{ osm: "OpenStreetMap", drawn: "drawn by hand", adjusted: "OpenStreetMap, adjusted" }[S.source] || "—"}`;
+    $("wallsWrap").hidden = false;
+    $("walls").innerHTML = a.walls.map(w => {
+      const sq = Math.abs(w.corner - 90) <= 2 ? "" : ` style="color:var(--warn)"`;
+      return `<tr data-i="${w.i}" class="${w.i === a.front ? "is-front" : ""} ${w.i === S.hover ? "hl" : ""}">
+        <td>${w.i + 1}</td><td><span class="chip"><i style="background:${FACE_COLOR[w.facing]}"></i>${FACE[w.facing]}${w.i === a.front ? " (front wall)" : ""}</span></td>
+        <td class="num">${fmtLen(w.len)}</td><td class="num"${sq}>${nf(w.corner, 1)}°</td></tr>`;
+    }).join("");
+  }
+  // distance measurement
+  if (S.measure.length > 1) {
+    let total = 0;
+    const rows = [];
+    for (let i = 0; i + 1 < S.measure.length; i++) { const d = haversine(S.measure[i], S.measure[i + 1]); total += d; rows.push(`<tr><td>Segment ${i + 1}</td><td class="num">${fmtLen(d)}</td></tr>`); }
+    if (rows.length > 1) rows.push(`<tr><td><b>Total</b></td><td class="num"><b>${fmtLen(total)}</b></td></tr>`);
+    rows.push(`<tr><td colspan="2"><button id="btnClearMeas">Clear measurement</button></td></tr>`);
+    $("meas").innerHTML = rows.join(""); $("measWrap").hidden = false;
+    $("btnClearMeas").onclick = () => { S.measure = []; if (S.mode === "measure") setMode("idle"); else render(); };
+  } else $("measWrap").hidden = true;
+  $("exportWrap").hidden = !a && S.measure.length < 2;
+  renderCompare(a);
+}
+
+function compareRows(a) {
+  if (!a) return [];
+  const rows = [
+    ["Side to side", "width", a.width, fmtLen], ["Front to back", "depth", a.depth, fmtLen],
+    ["Perimeter", "perimeter", a.perimeter, fmtLen], ["Footprint area", "area", a.area, fmtArea],
+  ];
+  return rows.filter(r => S.expected[r[1]] > 0).map(([name, key, measured, fmt]) => {
+    const exp = S.expected[key], diff = measured - exp, pct = diff / exp * 100;
+    const state = Math.abs(pct) <= S.tol ? "ok" : pct > 0 ? "over" : "under";
+    return { name, measured: fmt(measured), expected: fmt(exp), diff: (diff >= 0 ? "+" : "−") + fmt(Math.abs(diff)), pct: (pct >= 0 ? "+" : "−") + nf(Math.abs(pct), 1) + "%", state };
+  });
+}
+
+function renderCompare(a) {
+  const rows = compareRows(a), out = $("compareOut");
+  $("tab-compare").dataset.empty = rows.length ? "false" : "true";
+  if (!a) { out.innerHTML = `<div class="empty">Find or draw a building first.</div>`; return; }
+  if (!rows.length) { out.innerHTML = `<div class="empty">Enter at least one expected value above.</div>`; return; }
+  const label = { ok: "Within tolerance", over: "Larger than plan", under: "Smaller than plan" };
+  out.innerHTML = `<table><thead><tr><th></th><th class="num">Measured</th><th class="num">Expected</th><th class="num">Variance</th></tr></thead><tbody>${
+    rows.map(r => `<tr><td>${r.name}<br><span class="pill ${r.state}">${label[r.state]}</span></td><td class="num">${r.measured}</td><td class="num">${r.expected}</td><td class="num">${r.diff}<br><span style="color:var(--muted)">${r.pct}</span></td></tr>`).join("")
+  }</tbody></table>`;
+}
+
+/* ---------- Search and building lookup ---------- */
+async function search(q) {
+  q = q.trim(); if (!q) return;
+  $("results").hidden = true; $("goBtn").disabled = true;
+  status("Finding the address…", "busy");
+  try {
+    let list;
+    const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (m) list = [{ lat: +m[1], lng: +m[2], label: `${m[1]}, ${m[2]}`, road: "", precise: true, polygon: null }];
+    else list = engine.kind === "google" ? await geocodeGoogle(q) : await geocodeFree(q);
+    if (!list.length) { status("No match for that address. Check the spelling, or add the city and state.", "warn"); return; }
+    if (list.length > 1) {
+      const ul = $("results");
+      ul.innerHTML = list.map((r, i) => `<li data-i="${i}" class="${i ? "" : "sel"}">${esc(r.label)}</li>`).join("");
+      ul.hidden = false;
+      ul.onclick = e => { const li = e.target.closest("li"); if (!li) return; ul.querySelectorAll("li").forEach(x => x.classList.toggle("sel", x === li)); choosePlace(list[+li.dataset.i]); };
+    }
+    await choosePlace(list[0]);
+  } catch (e) {
+    console.error(e);
+    status("The address search didn't respond. Check your internet connection and try again.", "error");
+  } finally { $("goBtn").disabled = false; }
+}
+
+async function choosePlace(r) {
+  S.place = r; S.pts = []; S.roads = []; S.hover = null;
+  engine.setMarker(r); engine.setView(r, 19.5);
+  const ll = `${r.lat},${r.lng}`;
+  $("links").hidden = false;
+  $("links").innerHTML = `<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ll)}">Open in Google Maps ↗</a>
+    <a target="_blank" rel="noopener" href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(ll)}">Street View ↗</a>`;
+  render();
+  await findBuilding(r, r);
+}
+
+async function findBuilding(p, place = {}) {
+  const seq = S.seq = (S.seq || 0) + 1;
+  S.frontManual = false;
+  status("Looking up the building outline…", "busy");
+  $("btnPick").disabled = true;
+  let bld = place.polygon && place.polygon.length >= 3 ? { pts: place.polygon } : null, roads = [];
+  if (bld) { // show the outline from the address search right away; the street lookup below refines the front
+    S.pts = simplify(bld.pts); S.source = "osm"; S.hover = null;
+    const af = autoFront(S.pts, [], "", p); S.front = af.idx; S.frontNote = af.note;
+    engine.fit(S.pts); render();
+  }
+  if (!bld) { // the address search didn't include an outline: look one up (this also finds nearby streets)
+    try {
+      const d = await overpass(p);
+      roads = d.roads;
+      bld = chooseBuilding(d.buildings, p, d.roads);
+    } catch { /* servers busy; fall back below */ }
+  }
+  if (!bld) {
+    try {
+      const r = await reverseFree(p, 18), poly = r.category === "building" ? geoPoly(r.geojson) : null;
+      // Reverse lookup returns the nearest object, which can be across the street: only trust it when it's at the point or right next to it.
+      if (poly && (pointInPoly(p, poly) || distToPoly(p, poly) < 10)) bld = { pts: poly, inside: pointInPoly(p, poly) };
+    } catch { /* offline or busy */ }
+  }
+  if (!roads.length) {
+    try {
+      const r = await reverseFree(p, 17), gj = r.geojson;
+      const line = gj?.type === "LineString" ? gj.coordinates : gj?.type === "MultiLineString" ? gj.coordinates.flat() : null;
+      if (r.category === "highway" && line) roads = [{ name: r.name || r.address?.road || "the street", pts: line.map(([lng, lat]) => ({ lat, lng })) }];
+    } catch { /* offline or busy */ }
+  }
+  $("btnPick").disabled = false;
+  if (seq !== S.seq) return; // a newer search replaced this one
+  S.roads = roads;
+  if (!bld || !bld.pts || bld.pts.length < 3) {
+    S.pts = []; render();
+    status(place.picked ? "No outline on file for that spot. Use <b>Draw outline</b> and click each corner of the building."
+      : (place.precise === false ? "Found the street, but not the exact house. " : "") + "No building outline on file here. Use <b>Pick a building</b> to click it, or <b>Draw outline</b> to trace it.", "warn");
+    return;
+  }
+  const shown = S.pts.length >= 3 && bld.pts === place.polygon, edited = shown && S.source !== "osm";
+  if (!edited) { S.pts = simplify(bld.pts); S.source = "osm"; S.hover = null; }
+  const af = autoFront(S.pts, roads, place.road || S.place?.road, place.picked ? null : p);
+  if (!edited && !S.frontManual) { S.front = af.idx; S.frontNote = af.note; }
+  if (!shown) engine.fit(S.pts);
+  render();
+  const fuzzy = !place.picked && (place.precise === false || bld.inside === false);
+  status((fuzzy ? "The address point isn't on a building outline, so this is the closest building on the same side of the street. Make sure it's the right one, or use <b>Pick a building</b>. " : "Outline loaded. ") +
+    "Check it against the photo and drag any corner that's off.", fuzzy ? "warn" : "ok");
+}
+
+/* ---------- Share ---------- */
+function summaryText() {
+  const a = S.last, lines = [`Building measurements${S.place ? " – " + S.place.label : ""}`, `Measured ${new Date().toLocaleString()}`];
+  if (a) {
+    lines.push("", `Front to back: ${fmtLen(a.depth)}`, `Side to side: ${fmtLen(a.width)}`, `Footprint area: ${fmtArea(a.area)}`, `Perimeter: ${fmtLen(a.perimeter)}`, "", "Walls:");
+    a.walls.forEach(w => lines.push(`  ${w.i + 1}. ${FACE[w.facing]}${w.i === a.front ? " (front wall)" : ""}: ${fmtLen(w.len)}, corner ${nf(w.corner, 1)}°`));
+    const rows = compareRows(a);
+    if (rows.length) { lines.push("", `Compared with plans (±${S.tol}%):`); rows.forEach(r => lines.push(`  ${r.name}: measured ${r.measured}, expected ${r.expected}, variance ${r.diff} (${r.pct}) – ${r.state === "ok" ? "OK" : r.state}`)); }
+  }
+  if (S.measure.length > 1) {
+    let t = 0; for (let i = 0; i + 1 < S.measure.length; i++) t += haversine(S.measure[i], S.measure[i + 1]);
+    lines.push("", `Distance measured: ${fmtLen(t)}`);
+  }
+  lines.push("", "From satellite imagery; roof overhangs can make walls read 1–2 ft long. Not a survey.");
+  return lines.join("\n");
+}
+
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function csv() {
+  const a = S.last, u = S.units, q = v => `"${String(v).replace(/"/g, '""')}"`;
+  const rows = [["Address", S.place?.label || ""], ["Units", u === "ft" ? "feet" : "meters"], []];
+  if (a) {
+    rows.push(["Front to back", nf(lenIn(a.depth), 2)], ["Side to side", nf(lenIn(a.width), 2)],
+      [`Footprint area (${u === "ft" ? "sq ft" : "m²"})`, nf(areaIn(a.area), 1)], ["Perimeter", nf(lenIn(a.perimeter), 2)], [],
+      ["Wall", "Side", "Length", "Corner angle", "Start lat", "Start lng"]);
+    a.walls.forEach(w => rows.push([w.i + 1, FACE[w.facing] + (w.i === a.front ? " (front wall)" : ""), nf(lenIn(w.len), 2), nf(w.corner, 1), S.pts[w.i].lat.toFixed(7), S.pts[w.i].lng.toFixed(7)]));
+    const cr = compareRows(a);
+    if (cr.length) { rows.push([], ["Compare", "Measured", "Expected", "Variance", "Variance %", "Status"]); cr.forEach(r => rows.push([r.name, r.measured, r.expected, r.diff, r.pct, r.state])); }
+  }
+  return rows.map(r => r.map(q).join(",")).join("\r\n");
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch {
+    const t = Object.assign(document.createElement("textarea"), { value: text }); document.body.appendChild(t); t.select();
+    const ok = document.execCommand("copy"); t.remove(); return ok;
+  }
+}
+
+/* ---------- Wiring ---------- */
+function wire() {
+  $("searchForm").addEventListener("submit", e => { e.preventDefault(); search($("q").value); });
+  $("btnDraw").onclick = () => { if (S.mode === "draw") return finishDraw(); S.draft = []; setMode("draw"); };
+  $("btnMeasure").onclick = () => { if (S.mode === "measure") return setMode("idle"); S.measure = []; setMode("measure"); };
+  $("btnPick").onclick = () => setMode(S.mode === "pick" ? "idle" : "pick");
+  $("btnClear").onclick = () => { S.pts = []; S.measure = []; S.draft = []; S.hover = null; setMode("idle"); status("Cleared. Search for an address, or pick or draw a building.", "info"); };
+  document.querySelectorAll("[data-units]").forEach(b => b.onclick = () => {
+    S.units = b.dataset.units; store.set("bm.units", S.units);
+    document.querySelectorAll("[data-units]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    syncCompareInputs(); render();
+  });
+  $("showBox").onchange = e => { S.showBox = e.target.checked; store.set("bm.box", S.showBox ? "1" : "0"); render(); };
+  $("walls").addEventListener("click", e => { const tr = e.target.closest("tr"); if (tr) hooks.onEdgeClick(+tr.dataset.i); });
+  $("walls").addEventListener("mouseover", e => { const tr = e.target.closest("tr"); if (tr) hooks.onEdgeHover(+tr.dataset.i); });
+  $("walls").addEventListener("mouseleave", () => hooks.onEdgeHover(null));
+  document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+    document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b));
+    document.querySelectorAll("section.tab").forEach(s => s.hidden = s.id !== "tab-" + b.dataset.tab);
+  });
+  document.querySelectorAll("#tab-compare input[data-key]").forEach(inp => inp.oninput = () => {
+    const v = parseFloat(inp.value), k = inp.dataset.key;
+    S.expected[k] = v > 0 ? (k === "area" ? areaOut(v) : lenOut(v)) : null; render();
+  });
+  $("tol").oninput = e => { S.tol = Math.max(0, parseFloat(e.target.value) || 0); render(); };
+  $("btnCopy").onclick = async () => { const ok = await copyText(summaryText()); status(ok ? "Summary copied. Paste it into an email or document." : "Couldn't copy; use Download CSV instead.", ok ? "ok" : "warn"); };
+  $("btnCsv").onclick = () => download(`building-${(S.place?.label || "measure").split(",")[0].replace(/[^\w]+/g, "-").toLowerCase()}.csv`, csv(), "text/csv");
+  $("btnPrint").onclick = () => window.print();
+  $("btnKey").onclick = () => { store.set("bm.gkey", $("gkey").value.trim() || null); location.reload(); };
+  document.addEventListener("keydown", e => {
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.key === "Escape") { if (S.mode === "draw") S.draft = []; setMode("idle"); }
+    else if (e.key === "Enter" && S.mode === "draw") finishDraw();
+    else if ((e.key === "Backspace" || e.key === "Delete" || (e.key === "z" && (e.metaKey || e.ctrlKey))) && (S.mode === "draw" || S.mode === "measure")) { e.preventDefault(); undo(); }
+  });
+}
+function syncCompareInputs() {
+  document.querySelectorAll(".u").forEach(s => s.textContent = S.units);
+  document.querySelectorAll(".ua").forEach(s => s.textContent = S.units === "ft" ? "sq ft" : "m²");
+  document.querySelectorAll("#tab-compare input[data-key]").forEach(inp => {
+    const v = S.expected[inp.dataset.key];
+    inp.value = v ? +(inp.dataset.key === "area" ? areaIn(v) : lenIn(v)).toFixed(2) : "";
+  });
+}
+
+function loadGoogle(key) {
+  return new Promise((resolve, reject) => {
+    window.__bmGoogleReady = resolve;
+    window.gm_authFailure = () => { try { sessionStorage.setItem("bm.gfail", "1"); } catch {} location.reload(); };
+    const s = document.createElement("script");
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&loading=async&callback=__bmGoogleReady`;
+    s.async = true; s.onerror = () => reject(new Error("Google Maps script failed to load"));
+    document.head.appendChild(s);
+    setTimeout(() => reject(new Error("Google Maps timed out")), 15000);
+  });
+}
+
+async function start() {
+  S.units = store.get("bm.units") === "m" ? "m" : "ft";
+  S.showBox = store.get("bm.box") !== "0";
+  $("showBox").checked = S.showBox;
+  document.querySelectorAll("[data-units]").forEach(x => x.setAttribute("aria-pressed", x.dataset.units === S.units));
+  syncCompareInputs();
+  wire();
+
+  const key = store.get("bm.gkey");
+  let failed = false;
+  try { failed = sessionStorage.getItem("bm.gfail") === "1"; sessionStorage.removeItem("bm.gfail"); } catch {}
+  $("gkey").value = key || "";
+  if (key && !failed) {
+    try { await loadGoogle(key); engine = GoogleEngine($("map"), hooks); }
+    catch (e) { console.warn(e); failed = true; }
+  }
+  if (!engine) engine = LeafletEngine($("map"), hooks);
+  $("engineNote").textContent = engine.kind === "google"
+    ? "Using Google Maps satellite imagery and Google address search."
+    : failed ? "The saved Google Maps key didn't work, so the free satellite map is in use. Check that the key is right and that the Maps JavaScript API and Geocoding API are turned on for it."
+      : "Using the free satellite map. To use Google Maps imagery and address search instead, paste a Google Maps API key below. The \"Open in Google Maps\" and \"Street View\" links work either way.";
+  if (failed) status("The Google Maps key didn't work, so the free map is in use. See How it works › Google Maps.", "warn");
+  render();
+  search($("q").value); // open on the default address
+}
+start();
+</script>
+</body>
+</html>
