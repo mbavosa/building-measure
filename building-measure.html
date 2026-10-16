@@ -165,7 +165,7 @@
         <div><h1>Building Measure</h1><p>Type an address and measure the building from the satellite map.</p></div>
       </div>
       <form class="search" id="searchForm" autocomplete="off">
-        <input type="text" id="q" placeholder="1300 Glenview Place Wauwatosa, WI 53213" value="1300 Glenview Place Wauwatosa, WI 53213" aria-label="Address">
+        <input type="text" id="q" placeholder="1300 Glenview Place Wauwatosa, WI 53213" aria-label="Address">
         <button class="primary" type="submit" id="goBtn">Find</button>
       </form>
       <ul class="results" id="results" hidden></ul>
@@ -1101,7 +1101,8 @@ async function start() {
       : "Using the free satellite map. To use Google Maps imagery and address search instead, paste a Google Maps API key below. The \"Open in Google Maps\" and \"Street View\" links work either way.";
   if (failed) status("The Google Maps key didn't work, so the free map is in use. See How it works › Google Maps.", "warn");
   render();
-  search($("q").value); // open on the default address
+  $("q").value = ""; // start empty, even if the browser restored an earlier entry
+  $("q").focus();
 }
 start();
 </script>
